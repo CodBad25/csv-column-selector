@@ -2,6 +2,12 @@
 
 *Dernière mise à jour : 29 janvier 2026*
 
+## Déploiement
+
+- **URL en ligne** : https://codbad25.github.io/csv-column-selector/
+- **Repo GitHub** : https://github.com/CodBad25/csv-column-selector
+- **Hébergement** : GitHub Pages (branche main)
+
 ## Description
 
 Application web de sélection et traitement de colonnes CSV. Traitement 100% côté client (pas de serveur).
