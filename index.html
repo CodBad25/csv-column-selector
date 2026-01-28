@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sélecteur de Colonnes CSV - Version Avancée</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+    <style>
+        /* === VARIABLES CSS === */
+        :root {
+            --primary-color: #3b82f6;
+            --success-color: #10b981;
+            --error-color: #ef4444;
+            --warning-color: #f59e0b;
+            --info-color: #06b6d4;
+        }
+
+        /* === MODE SOMBRE === */
+        .dark {
+            --bg-primary: #1f2937;
+            --bg-secondary: #374151;
+            --text-primary: #f9fafb;
+            --text-secondary: #d1d5db;
+            --border-color: #4b5563;
+        }
+
+        .dark body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        .dark .bg-white {
+            background-color: var(--bg-secondary) !important;
+        }
+
+        .dark .text-gray-800 {
+            color: var(--text-primary) !important;
+        }
+
+        .dark .text-gray-700 {
+            color: var(--text-secondary) !important;
+        }
+
+        .dark .border-gray-300 {
+            border-color: var(--border-color) !important;
+        }
+
+        /* === ANIMATIONS === */
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .slide-in {
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .pulse-loading {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* === COMPOSANTS === */
+        .csv-dropzone {
+            transition: all 0.3s ease;
+        }
+
+        .csv-dropzone:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .csv-column-item {
+            transition: all 0.2s ease;
+        }
+
+        .csv-column-item:hover {
+            background-color: #f8fafc;
+            border-color: var(--primary-color);
+            transform: translateY(-1px);
+        }
+
+        .dark .csv-column-item:hover {
+            background-color: #4b5563;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+            padding: 16px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.success { background-color: var(--success-color); }
+        .toast.error { background-color: var(--error-color); }
+        .toast.warning { background-color: var(--warning-color); }
+        .toast.info { background-color: var(--info-color); }
+
+        /* === TYPES DE DONNÉES === */
+        .data-type-text { border-left: 4px solid #6b7280; }
+        .data-type-number { border-left: 4px solid #3b82f6; }
+        .data-type-email { border-left: 4px solid #10b981; }
+        .data-type-date { border-left: 4px solid #f59e0b; }
+        .data-type-url { border-left: 4px solid #8b5cf6; }
+        .data-type-phone { border-left: 4px solid #ef4444; }
+
+        /* === HISTORIQUE === */
+        .history-panel {
+            position: fixed;
+            right: -300px;
+            top: 0;
+            height: 100vh;
+            width: 300px;
+            background: white;
+            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+            transition: right 0.3s ease;
+            z-index: 999;
+            overflow-y: auto;
+        }
+
+        .history-panel.open {
+            right: 0;
+        }
+
+        .dark .history-panel {
+            background: var(--bg-secondary);
+        }
+
+        /* === FILTRES === */
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 4px 12px;
+            background: #e5e7eb;
+            border-radius: 16px;
+            font-size: 12px;
+            margin: 2px;
+            transition: all 0.2s ease;
+        }
+
+        .filter-chip:hover {
+            background: #d1d5db;
+        }
+
+        .dark .filter-chip {
+            background: #4b5563;
+            color: #f9fafb;
+        }
+
+        .dark .filter-chip:hover {
+            background: #6b7280;
+        }
+
+        /* === PROGRESS BAR === */
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #10b981);
+            transition: width 0.3s ease;
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 768px) {
+            .history-panel {
+                width: 100%;
+                right: -100%;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen transition-colors duration-300">
+    <!-- Bouton mode sombre -->
+    <button id="darkModeToggle" class="fixed top-4 right-4 z-50 p-3 bg-gray-800 text-white rounded-full shadow-lg hover:bg-gray-700 transition-colors">
+        🌙
+    </button>
+
+    <!-- Bouton historique -->
+    <button id="historyToggle" class="fixed top-16 right-4 z-50 p-3 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-colors">
+        📋
+    </button>
+
+    <!-- Panneau d'historique -->
+    <div id="historyPanel" class="history-panel">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-600">
+            <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-200">Historique des actions</h3>
+            <button id="clearHistory" class="text-sm text-red-600 hover:text-red-800 mt-2">Effacer l'historique</button>
+        </div>
+        <div id="historyList" class="p-4">
+            <!-- Historique généré dynamiquement -->
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <h1 class="text-3xl font-bold text-gray-800 dark:text-gray-200 mb-8 text-center">Sélecteur de Colonnes CSV - Version Avancée</h1>
+        
+        <!-- Barre de progression -->
+        <div id="progressContainer" class="mb-6 hidden">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="progressText" class="text-sm text-gray-600 dark:text-gray-400 mt-2 text-center">Traitement en cours...</p>
+        </div>
+
+        <!-- Statistiques avancées -->
+        <div id="statsPanel" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6 hidden">
+            <div class="grid grid-cols-1 md:grid-cols-6 gap-4 text-center">
+                <div>
+                    <div class="text-2xl font-bold text-blue-600" id="totalRows">0</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Lignes totales</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-green-600" id="totalColumns">0</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Colonnes totales</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-purple-600" id="selectedCount">0</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Colonnes sélectionnées</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-orange-600" id="fileSizeDisplay">0 KB</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Taille du fichier</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-red-600" id="processingTime">0ms</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Temps de traitement</div>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-red-500 cursor-pointer hover:opacity-80 transition-opacity" id="anomaliesCount" onclick="toggleAnomaliesDetails()">0</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">⚠️ Anomalies</div>
+                </div>
+            </div>
+            <div id="anomaliesDetails" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg hidden">
+                <h4 class="text-sm font-semibold text-red-700 dark:text-red-300 mb-2">Détails des anomalies détectées :</h4>
+                <div id="anomaliesList" class="text-xs text-red-600 dark:text-red-400"></div>
+            </div>
+        </div>
+
+        <!-- Zone d'import -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4">Importer un fichier CSV</h2>
+            <div id="dropZone" class="csv-dropzone border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-blue-400 transition-colors cursor-pointer">
+                <div class="flex flex-col items-center">
+                    <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p class="text-lg text-gray-600 dark:text-gray-400 mb-2">Glissez-déposez votre fichier CSV ici</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-500 mb-4">ou</p>
+                    <button id="fileButton" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors">
+                        Choisir un fichier
+                    </button>
+                </div>
+            </div>
+            <input type="file" id="fileInput" accept=".csv" class="hidden">
+            
+            <!-- Indicateur de chargement -->
+            <div id="loadingSpinner" class="hidden mt-4 text-center">
+                <div class="inline-flex items-center">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mr-3"></div>
+                    <span class="text-gray-600 dark:text-gray-400">Traitement du fichier...</span>
+                </div>
+            </div>
+            
+            <div id="fileInfo" class="mt-4 text-sm text-gray-600 dark:text-gray-400 hidden">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <p><span class="font-semibold">Fichier:</span> <span id="fileName"></span></p>
+                    <p><span class="font-semibold">Taille:</span> <span id="fileSize"></span></p>
+                    <p><span class="font-semibold">Délimiteur:</span> <span id="detectedDelimiter"></span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filtres et recherche -->
+        <div id="filterSection" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 hidden fade-in">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-0">Filtres et recherche</h2>
+                <button id="clearFilters" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                    Effacer les filtres
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rechercher dans les colonnes</label>
+                    <input type="text" id="columnSearch" placeholder="Tapez pour rechercher..." class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-200">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Filtrer par type</label>
+                    <select id="typeFilter" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-200">
+                        <option value="">Tous les types</option>
+                        <option value="text">Texte</option>
+                        <option value="number">Nombre</option>
+                        <option value="email">Email</option>
+                        <option value="date">Date</option>
+                        <option value="url">URL</option>
+                        <option value="phone">Téléphone</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div id="activeFilters" class="mb-4">
+                <!-- Filtres actifs affichés ici -->
+            </div>
+        </div>
+
+        <!-- Sélection des colonnes -->
+        <div id="columnSelection" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 hidden fade-in">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-0">Sélectionner les colonnes</h2>
+                <div class="flex gap-2 flex-wrap">
+                    <button id="selectAll" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                        Tout sélectionner
+                    </button>
+                    <button id="deselectAll" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                        Tout désélectionner
+                    </button>
+                    <button id="selectByType" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                        Sélectionner par type
+                    </button>
+                    <button id="savePrefs" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                        Sauvegarder préférences
+                    </button>
+                </div>
+            </div>
+            <div id="columnList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <!-- Les colonnes seront ajoutées ici dynamiquement -->
+            </div>
+        </div>
+
+        <!-- Aperçu des données -->
+        <div id="dataPreview" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 hidden fade-in">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+                <h2 class="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-0">Aperçu des données</h2>
+                <div class="flex gap-2">
+                    <select id="previewRows" class="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm dark:bg-gray-700 dark:text-gray-200">
+                        <option value="5">5 lignes</option>
+                        <option value="10" selected>10 lignes</option>
+                        <option value="25">25 lignes</option>
+                        <option value="50">50 lignes</option>
+                    </select>
+                    <button id="refreshPreview" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors">
+                        Actualiser
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table id="previewTable" class="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
+                    <thead class="bg-gray-50 dark:bg-gray-700"></thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-600"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div id="actionButtons" class="flex flex-col sm:flex-row gap-4 justify-center hidden fade-in">
+            <button id="downloadCSV" class="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                📥 Télécharger CSV
+            </button>
+            <button id="downloadJSON" class="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                📄 Télécharger JSON
+            </button>
+            <button id="downloadExcel" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                📊 Télécharger Excel
+            </button>
+            <button id="generateReport" class="bg-purple-500 hover:bg-purple-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                📈 Générer rapport
+            </button>
+            <button id="resetApp" class="bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
+                🔄 Nouveau fichier
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // === CONFIGURATION AVANCÉE ===
+        const CONFIG = {
+            MAX_FILE_SIZE: 100 * 1024 * 1024, // 100MB
+            MAX_ROWS: 500000,
+            MAX_COLUMNS: 500,
+            MAX_PREVIEW_ROWS: 50,
+            CHUNK_SIZE: 1000, // Pour le traitement par chunks
+            ENCODINGS: [
+                { pattern: /%40/g, replacement: '@' },
+                { pattern: /%2E/g, replacement: '.' },
+                { pattern: /%2D/g, replacement: '-' },
+                { pattern: /%5F/g, replacement: '_' },
+                { pattern: /AC0/g, replacement: '-' },
+                { pattern: /AEA/g, replacement: 'É' },
+                { pattern: /AE0/g, replacement: 'À' },
+                { pattern: /É-ac/g, replacement: '@ac' },
+                { pattern: /--/g, replacement: '-' },
+                { pattern: /-\./g, replacement: '.' },
+                { pattern: /\+/g, replacement: ' ' }
+            ],
+            DELIMITERS: [',', ';', '\t', '+ADs-', '|'],
+            DATA_TYPES: {
+                EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                PHONE: /^[\+]?[1-9]?[0-9]{7,15}$/,
+                URL: /^https?:\/\/.+/,
+                DATE: /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$|^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/,
+                NUMBER: /^-?\d*\.?\d+$/
+            }
+        };
+
+        // === APPLICATION STATE AVANCÉE ===
+        const CSVApp = {
+            data: {
+                csvData: [],
+                headers: [],
+                columnTypes: {},
+                selectedColumns: new Set(),
+                filteredColumns: new Set(),
+                originalFileName: '',
+                currentFile: null,
+                detectedDelimiter: ',',
+                processingStartTime: 0,
+                history: []
+            },
+            
+            ui: {
+                darkMode: localStorage.getItem('csvApp_darkMode') === 'true',
+                currentPreviewRows: 10,
+                activeFilters: new Set()
+            },
+            
+            elements: {
+                // Éléments existants
+                dropZone: document.getElementById('dropZone'),
+                fileInput: document.getElementById('fileInput'),
+                fileButton: document.getElementById('fileButton'),
+                fileName: document.getElementById('fileName'),
+                fileSize: document.getElementById('fileSize'),
+                fileInfo: document.getElementById('fileInfo'),
+                detectedDelimiter: document.getElementById('detectedDelimiter'),
+                loadingSpinner: document.getElementById('loadingSpinner'),
+                columnSelection: document.getElementById('columnSelection'),
+                columnList: document.getElementById('columnList'),
+                selectAllBtn: document.getElementById('selectAll'),
+                deselectAllBtn: document.getElementById('deselectAll'),
+                savePrefsBtn: document.getElementById('savePrefs'),
+                dataPreview: document.getElementById('dataPreview'),
+                previewTable: document.getElementById('previewTable'),
+                actionButtons: document.getElementById('actionButtons'),
+                downloadCSVBtn: document.getElementById('downloadCSV'),
+                downloadJSONBtn: document.getElementById('downloadJSON'),
+                resetBtn: document.getElementById('resetApp'),
+                statsPanel: document.getElementById('statsPanel'),
+                totalRows: document.getElementById('totalRows'),
+                totalColumns: document.getElementById('totalColumns'),
+                selectedCount: document.getElementById('selectedCount'),
+                fileSizeDisplay: document.getElementById('fileSizeDisplay'),
+                anomaliesCount: document.getElementById('anomaliesCount'),
+                anomaliesDetails: document.getElementById('anomaliesDetails'),
+                anomaliesList: document.getElementById('anomaliesList'),
+                
+                // Nouveaux éléments
+                darkModeToggle: document.getElementById('darkModeToggle'),
+                historyToggle: document.getElementById('historyToggle'),
+                historyPanel: document.getElementById('historyPanel'),
+                historyList: document.getElementById('historyList'),
+                clearHistory: document.getElementById('clearHistory'),
+                progressContainer: document.getElementById('progressContainer'),
+                progressFill: document.getElementById('progressFill'),
+                progressText: document.getElementById('progressText'),
+                processingTime: document.getElementById('processingTime'),
+                filterSection: document.getElementById('filterSection'),
+                columnSearch: document.getElementById('columnSearch'),
+                typeFilter: document.getElementById('typeFilter'),
+                activeFilters: document.getElementById('activeFilters'),
+                clearFilters: document.getElementById('clearFilters'),
+                selectByType: document.getElementById('selectByType'),
+                previewRows: document.getElementById('previewRows'),
+                refreshPreview: document.getElementById('refreshPreview'),
+                downloadExcel: document.getElementById('downloadExcel'),
+                generateReport: document.getElementById('generateReport')
+            }
+        };
+
+        // === UTILITAIRES AVANCÉS ===
+        const Utils = {
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            },
+
+            sanitizeText(text) {
+                if (!text) return '';
+                return text.replace(/[<>"'&]/g, (match) => {
+                    const entities = { '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' };
+                    return entities[match];
+                });
+            },
+
+            cleanData(text) {
+                if (!text) return '';
+                let cleaned = text.trim();
+                try {
+                    if (cleaned.includes('%')) {
+                        cleaned = decodeURIComponent(cleaned);
+                    }
+                    CONFIG.ENCODINGS.forEach(({ pattern, replacement }) => {
+                        cleaned = cleaned.replace(pattern, replacement);
+                    });
+                } catch (e) {
+                    ErrorHandler.log('Erreur lors du nettoyage des données:', e);
+                }
+                return cleaned;
+            },
+
+            detectDataType(value) {
+                if (!value || value.trim() === '') return 'text';
+                
+                const cleanValue = value.trim();
+                
+                if (CONFIG.DATA_TYPES.EMAIL.test(cleanValue)) return 'email';
+                if (CONFIG.DATA_TYPES.PHONE.test(cleanValue)) return 'phone';
+                if (CONFIG.DATA_TYPES.URL.test(cleanValue)) return 'url';
+                if (CONFIG.DATA_TYPES.DATE.test(cleanValue)) return 'date';
+                if (CONFIG.DATA_TYPES.NUMBER.test(cleanValue)) return 'number';
+                
+                return 'text';
+            },
+
+            detectAnomalies(value, expectedType, columnIndex) {
+                if (!value || value.trim() === '') return null;
+                
+                const trimmed = value.trim();
+                const anomalies = [];
+                
+                // Anomalies pour les emails
+                if (expectedType === 'email') {
+                    if (!trimmed.includes('@')) {
+                        anomalies.push('Email sans @');
+                    } else if (!CONFIG.DATA_TYPES.EMAIL.test(trimmed)) {
+                        anomalies.push('Format email invalide');
+                    }
+                }
+                
+                // Anomalies pour les nombres
+                if (expectedType === 'number') {
+                    if (!CONFIG.DATA_TYPES.NUMBER.test(trimmed)) {
+                        anomalies.push('Format nombre invalide');
+                    }
+                }
+                
+                // Anomalies pour les dates
+                if (expectedType === 'date') {
+                    if (!CONFIG.DATA_TYPES.DATE.test(trimmed)) {
+                        anomalies.push('Format date invalide');
+                    }
+                }
+                
+                // Anomalies pour les URLs
+                if (expectedType === 'url') {
+                    if (!CONFIG.DATA_TYPES.URL.test(trimmed)) {
+                        anomalies.push('Format URL invalide');
+                    }
+                }
+                
+                // Détection de caractères suspects
+                if (/[\u0000-\u001F\u007F-\u009F]/.test(trimmed)) {
+                    anomalies.push('Caractères de contrôle détectés');
+                }
+                
+                // Détection d'encodage suspect
+                if (/[\u00C0-\u00FF]{2,}/.test(trimmed)) {
+                    anomalies.push('Possible problème d\'encodage');
+                }
+                
+                // Détection de patterns suspects dans les emails
+                if (expectedType === 'email' && trimmed.includes('@')) {
+                    if (trimmed.split('@').length > 2) {
+                        anomalies.push('Plusieurs @ dans l\'email');
+                    }
+                    if (trimmed.includes('..')) {
+                        anomalies.push('Points consécutifs dans l\'email');
+                    }
+                }
+                
+                return anomalies.length > 0 ? anomalies : null;
+            },
+
+            analyzeColumn(columnData) {
+                const types = {};
+                const sampleSize = Math.min(100, columnData.length);
+                
+                for (let i = 0; i < sampleSize; i++) {
+                    const type = this.detectDataType(columnData[i]);
+                    types[type] = (types[type] || 0) + 1;
+                }
+                
+                // Retourner le type le plus fréquent
+                return Object.keys(types).reduce((a, b) => types[a] > types[b] ? a : b);
+            },
+
+            debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), wait);
+                };
+            },
+
+            formatTime(ms) {
+                if (ms < 1000) return `${Math.round(ms)}ms`;
+                return `${Math.round(ms / 1000)}s`;
+            },
+
+            generateId() {
+                return Date.now().toString(36) + Math.random().toString(36).substr(2);
+            }
+        };
+
+        // === GESTION D'ERREURS AVANCÉE ===
+        const ErrorHandler = {
+            show(message, type = 'error', duration = 5000) {
+                const toast = document.createElement('div');
+                toast.className = `toast ${type}`;
+                toast.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <span class="mr-2">${this.getIcon(type)}</span>
+                            <span>${message}</span>
+                        </div>
+                        <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">
+                            ✕
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => toast.classList.add('show'), 100);
+                setTimeout(() => {
+                    toast.classList.remove('show');
+                    setTimeout(() => toast.remove(), 300);
+                }, duration);
+            },
+
+            getIcon(type) {
+                const icons = {
+                    success: '✅',
+                    error: '❌',
+                    warning: '⚠️',
+                    info: 'ℹ️'
+                };
+                return icons[type] || 'ℹ️';
+            },
+
+            log(message, error = null) {
+                console.error('[CSV App]:', message, error);
+                HistoryManager.add('error', message);
+            }
+        };
+
+        // === GESTIONNAIRE D'HISTORIQUE ===
+        const HistoryManager = {
+            add(type, message, data = null) {
+                const entry = {
+                    id: Utils.generateId(),
+                    type,
+                    message,
+                    timestamp: new Date(),
+                    data
+                };
+                
+                CSVApp.data.history.unshift(entry);
+                
+                // Limiter à 50 entrées
+                if (CSVApp.data.history.length > 50) {
+                    CSVApp.data.history = CSVApp.data.history.slice(0, 50);
+                }
+                
+                this.updateDisplay();
+                this.save();
+            },
+
+            updateDisplay() {
+                const list = CSVApp.elements.historyList;
+                list.innerHTML = '';
+                
+                CSVApp.data.history.forEach(entry => {
+                    const div = document.createElement('div');
+                    div.className = 'mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg';
+                    div.innerHTML = `
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-medium text-${this.getTypeColor(entry.type)}-600">${entry.type.toUpperCase()}</span>
+                            <span class="text-xs text-gray-500">${entry.timestamp.toLocaleTimeString()}</span>
+                        </div>
+                        <p class="text-sm text-gray-700 dark:text-gray-300">${entry.message}</p>
+                    `;
+                    list.appendChild(div);
+                });
+            },
+
+            getTypeColor(type) {
+                const colors = {
+                    success: 'green',
+                    error: 'red',
+                    warning: 'yellow',
+                    info: 'blue',
+                    action: 'purple'
+                };
+                return colors[type] || 'gray';
+            },
+
+            clear() {
+                CSVApp.data.history = [];
+                this.updateDisplay();
+                this.save();
+                ErrorHandler.show('Historique effacé', 'info');
+            },
+
+            save() {
+                try {
+                    localStorage.setItem('csvApp_history', JSON.stringify(CSVApp.data.history));
+                } catch (e) {
+                    console.warn('Impossible de sauvegarder l\'historique');
+                }
+            },
+
+            load() {
+                try {
+                    const saved = localStorage.getItem('csvApp_history');
+                    if (saved) {
+                        CSVApp.data.history = JSON.parse(saved);
+                        this.updateDisplay();
+                    }
+                } catch (e) {
+                    console.warn('Impossible de charger l\'historique');
+                }
+            }
+        };
+
+        // === GESTIONNAIRE DE MODE SOMBRE ===
+        const DarkModeManager = {
+            init() {
+                if (CSVApp.ui.darkMode) {
+                    document.documentElement.classList.add('dark');
+                    CSVApp.elements.darkModeToggle.textContent = '☀️';
+                }
+            },
+
+            toggle() {
+                CSVApp.ui.darkMode = !CSVApp.ui.darkMode;
+                document.documentElement.classList.toggle('dark');
+                CSVApp.elements.darkModeToggle.textContent = CSVApp.ui.darkMode ? '☀️' : '🌙';
+                localStorage.setItem('csvApp_darkMode', CSVApp.ui.darkMode);
+                HistoryManager.add('action', `Mode ${CSVApp.ui.darkMode ? 'sombre' : 'clair'} activé`);
+            }
+        };
+
+        // === GESTIONNAIRE DE FILTRES ===
+        const FilterManager = {
+            applyFilters() {
+                const searchTerm = CSVApp.elements.columnSearch.value.toLowerCase();
+                const typeFilter = CSVApp.elements.typeFilter.value;
+                
+                CSVApp.data.filteredColumns.clear();
+                
+                CSVApp.data.headers.forEach((header, index) => {
+                    const matchesSearch = !searchTerm || header.toLowerCase().includes(searchTerm);
+                    const matchesType = !typeFilter || CSVApp.data.columnTypes[index] === typeFilter;
+                    
+                    if (matchesSearch && matchesType) {
+                        CSVApp.data.filteredColumns.add(index);
+                    }
+                });
+                
+                this.updateActiveFilters();
+                UI.displayColumnSelection();
+            },
+
+            updateActiveFilters() {
+                const container = CSVApp.elements.activeFilters;
+                container.innerHTML = '';
+                
+                const searchTerm = CSVApp.elements.columnSearch.value;
+                const typeFilter = CSVApp.elements.typeFilter.value;
+                
+                if (searchTerm) {
+                    this.addFilterChip(container, `Recherche: "${searchTerm}"`, () => {
+                        CSVApp.elements.columnSearch.value = '';
+                        this.applyFilters();
+                    });
+                }
+                
+                if (typeFilter) {
+                    this.addFilterChip(container, `Type: ${typeFilter}`, () => {
+                        CSVApp.elements.typeFilter.value = '';
+                        this.applyFilters();
+                    });
+                }
+            },
+
+            addFilterChip(container, text, onRemove) {
+                const chip = document.createElement('span');
+                chip.className = 'filter-chip';
+                chip.innerHTML = `
+                    ${text}
+                    <button class="ml-2 text-gray-600 hover:text-gray-800" onclick="event.stopPropagation()">
+                        ×
+                    </button>
+                `;
+                chip.querySelector('button').addEventListener('click', onRemove);
+                container.appendChild(chip);
+            },
+
+            clear() {
+                CSVApp.elements.columnSearch.value = '';
+                CSVApp.elements.typeFilter.value = '';
+                this.applyFilters();
+                HistoryManager.add('action', 'Filtres effacés');
+            }
+        };
+
+        // === VALIDATION AVANCÉE ===
+        const Validator = {
+            validateFile(file) {
+                if (!file) {
+                    throw new Error('Aucun fichier sélectionné');
+                }
+                
+                if (file.size > CONFIG.MAX_FILE_SIZE) {
+                    throw new Error(`Fichier trop volumineux (max ${Utils.formatFileSize(CONFIG.MAX_FILE_SIZE)})`);
+                }
+                
+                if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+                    throw new Error('Veuillez sélectionner un fichier CSV valide');
+                }
+                
+                return true;
+            },
+
+            validateData(data) {
+                if (!Array.isArray(data) || data.length === 0) {
+                    throw new Error('Données CSV invalides ou vides');
+                }
+                
+                if (data.length > CONFIG.MAX_ROWS) {
+                    throw new Error(`Trop de lignes (max ${CONFIG.MAX_ROWS.toLocaleString()})`);
+                }
+                
+                if (data[0] && data[0].length > CONFIG.MAX_COLUMNS) {
+                    throw new Error(`Trop de colonnes (max ${CONFIG.MAX_COLUMNS})`);
+                }
+                
+                return true;
+            }
+        };
+
+        // === GESTIONNAIRE DE PRÉFÉRENCES AVANCÉ ===
+        const PreferencesManager = {
+            save() {
+                try {
+                    const prefs = {
+                        selectedColumns: Array.from(CSVApp.data.selectedColumns),
+                        lastFileName: CSVApp.data.originalFileName,
+                        darkMode: CSVApp.ui.darkMode,
+                        previewRows: CSVApp.ui.currentPreviewRows,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem('csvAppPrefs', JSON.stringify(prefs));
+                    ErrorHandler.show('Préférences sauvegardées !', 'success');
+                    HistoryManager.add('action', 'Préférences sauvegardées');
+                } catch (e) {
+                    ErrorHandler.show('Erreur lors de la sauvegarde', 'error');
+                }
+            },
+
+            load() {
+                try {
+                    const prefs = JSON.parse(localStorage.getItem('csvAppPrefs') || '{}');
+                    if (prefs.darkMode !== undefined) {
+                        CSVApp.ui.darkMode = prefs.darkMode;
+                    }
+                    if (prefs.previewRows) {
+                        CSVApp.ui.currentPreviewRows = prefs.previewRows;
+                        CSVApp.elements.previewRows.value = prefs.previewRows;
+                    }
+                    return prefs;
+                } catch (e) {
+                    return {};
+                }
+            }
+        };
+
+        // === PARSEUR CSV AVANCÉ ===
+        const CSVParser = {
+            async parseFile(file) {
+                return new Promise((resolve, reject) => {
+                    Papa.parse(file, {
+                        header: false,
+                        delimiter: "",
+                        skipEmptyLines: true,
+                        worker: true, // Utiliser un worker pour les gros fichiers
+                        complete: (results) => {
+                            try {
+                                if (results.data && results.data.length > 0) {
+                                    let data = results.data;
+                                    let delimiter = results.meta.delimiter || ',';
+                                    
+                                    // Vérifier si le parsing a bien fonctionné
+                                    if (data[0].length === 1 && data[0][0].includes('+ADs-')) {
+                                        this.retryWithCustomDelimiter(file, '+ADs-')
+                                            .then(resolve)
+                                            .catch(reject);
+                                        return;
+                                    }
+                                    
+                                    CSVApp.data.detectedDelimiter = delimiter;
+                                    resolve(data);
+                                } else {
+                                    reject(new Error('Aucune donnée trouvée dans le fichier'));
+                                }
+                            } catch (e) {
+                                reject(e);
+                            }
+                        },
+                        error: reject
+                    });
+                });
+            },
+
+            async retryWithCustomDelimiter(file, delimiter) {
+                return new Promise((resolve, reject) => {
+                    Papa.parse(file, {
+                        header: false,
+                        delimiter: delimiter,
+                        skipEmptyLines: true,
+                        worker: true,
+                        complete: (results) => {
+                            if (results.data && results.data.length > 0) {
+                                CSVApp.data.detectedDelimiter = delimiter;
+                                resolve(results.data);
+                            } else {
+                                reject(new Error('Échec du parsing avec délimiteur personnalisé'));
+                            }
+                        },
+                        error: reject
+                    });
+                });
+            }
+        };
+
+        // === GESTIONNAIRE DE FICHIERS AVANCÉ ===
+        const FileHandler = {
+            async handleFile(file) {
+                try {
+                    CSVApp.data.processingStartTime = performance.now();
+                    
+                    // Validation
+                    Validator.validateFile(file);
+                    
+                    // Affichage du spinner et de la barre de progression
+                    CSVApp.elements.loadingSpinner.classList.remove('hidden');
+                    CSVApp.elements.progressContainer.classList.remove('hidden');
+                    this.updateProgress(10, 'Validation du fichier...');
+                    
+                    // Stockage des infos du fichier
+                    CSVApp.data.currentFile = file;
+                    CSVApp.data.originalFileName = file.name.replace('.csv', '');
+                    
+                    // Affichage des infos
+                    CSVApp.elements.fileName.textContent = file.name;
+                    CSVApp.elements.fileSize.textContent = Utils.formatFileSize(file.size);
+                    CSVApp.elements.fileInfo.classList.remove('hidden');
+                    
+                    this.updateProgress(30, 'Parsing du fichier...');
+                    
+                    // Parsing
+                    const data = await CSVParser.parseFile(file);
+                    
+                    this.updateProgress(50, 'Validation des données...');
+                    
+                    // Validation des données
+                    Validator.validateData(data);
+                    
+                    this.updateProgress(70, 'Nettoyage des données...');
+                    
+                    // Traitement
+                    CSVApp.data.csvData = data;
+                    CSVApp.data.headers = data[0];
+                    
+                    this.updateProgress(85, 'Analyse des types de données...');
+                    
+                    await this.initializeColumns();
+                    
+                    this.updateProgress(95, 'Finalisation...');
+                    
+                    UI.updateStats();
+                    UI.displayColumnSelection();
+                    UI.updatePreview();
+                    
+                    // Affichage du délimiteur détecté
+                    CSVApp.elements.detectedDelimiter.textContent = CSVApp.data.detectedDelimiter;
+                    
+                    // Activation des boutons
+                    CSVApp.elements.downloadCSVBtn.disabled = false;
+                    CSVApp.elements.downloadJSONBtn.disabled = false;
+                    CSVApp.elements.downloadExcel.disabled = false;
+                    CSVApp.elements.generateReport.disabled = false;
+                    
+                    this.updateProgress(100, 'Terminé !');
+                    
+                    const processingTime = performance.now() - CSVApp.data.processingStartTime;
+                    CSVApp.elements.processingTime.textContent = Utils.formatTime(processingTime);
+                    
+                    ErrorHandler.show('Fichier traité avec succès !', 'success');
+                    HistoryManager.add('success', `Fichier "${file.name}" traité avec succès (${Utils.formatTime(processingTime)})`);
+                    
+                } catch (error) {
+                    ErrorHandler.show(error.message, 'error');
+                    ErrorHandler.log('Erreur lors du traitement du fichier:', error);
+                } finally {
+                    CSVApp.elements.loadingSpinner.classList.add('hidden');
+                    setTimeout(() => {
+                        CSVApp.elements.progressContainer.classList.add('hidden');
+                    }, 2000);
+                }
+            },
+
+            updateProgress(percent, text) {
+                CSVApp.elements.progressFill.style.width = `${percent}%`;
+                CSVApp.elements.progressText.textContent = text;
+            },
+
+            async initializeColumns() {
+                // Nettoyer les en-têtes
+                CSVApp.data.headers = CSVApp.data.headers.map(header => Utils.cleanData(header));
+                
+                // Nettoyer toutes les données par chunks pour éviter de bloquer l'UI
+                const chunks = [];
+                for (let i = 0; i < CSVApp.data.csvData.length; i += CONFIG.CHUNK_SIZE) {
+                    chunks.push(CSVApp.data.csvData.slice(i, i + CONFIG.CHUNK_SIZE));
+                }
+                
+                for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+                    chunks[chunkIndex] = chunks[chunkIndex].map(row => 
+                        row.map(cell => Utils.cleanData(cell))
+                    );
+                    
+                    // Permettre à l'UI de se mettre à jour
+                    if (chunkIndex % 10 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1));
+                    }
+                }
+                
+                // Reconstituer les données
+                CSVApp.data.csvData = chunks.flat();
+                
+                // Analyser les types de données
+                CSVApp.data.columnTypes = {};
+                for (let i = 0; i < CSVApp.data.headers.length; i++) {
+                    const columnData = CSVApp.data.csvData.slice(1).map(row => row[i] || '');
+                    CSVApp.data.columnTypes[i] = Utils.analyzeColumn(columnData);
+                }
+                
+                // Initialiser toutes les colonnes comme sélectionnées et filtrées
+                CSVApp.data.selectedColumns = new Set(CSVApp.data.headers.map((_, index) => index));
+                CSVApp.data.filteredColumns = new Set(CSVApp.data.headers.map((_, index) => index));
+            }
+        };
+
+        // === INTERFACE UTILISATEUR AVANCÉE ===
+        const UI = {
+            displayColumnSelection() {
+                CSVApp.elements.columnList.innerHTML = '';
+                
+                const columnsToShow = CSVApp.data.filteredColumns.size > 0 ? 
+                    Array.from(CSVApp.data.filteredColumns) : 
+                    CSVApp.data.headers.map((_, index) => index);
+                
+                columnsToShow.forEach(index => {
+                    const header = CSVApp.data.headers[index];
+                    const type = CSVApp.data.columnTypes[index] || 'text';
+                    
+                    const div = document.createElement('div');
+                    div.className = `csv-column-item flex items-center p-3 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 data-type-${type}`;
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = `col-${index}`;
+                    checkbox.checked = CSVApp.data.selectedColumns.has(index);
+                    checkbox.className = 'mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded';
+                    
+                    const label = document.createElement('label');
+                    label.htmlFor = `col-${index}`;
+                    label.className = 'text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer flex-1';
+                    
+                    const typeIcon = this.getTypeIcon(type);
+                    label.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <span>${header || `Colonne ${index + 1}`}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">${typeIcon} ${type}</span>
+                        </div>
+                    `;
+                    
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) {
+                            CSVApp.data.selectedColumns.add(index);
+                        } else {
+                            CSVApp.data.selectedColumns.delete(index);
+                        }
+                        this.updatePreview();
+                        this.updateStats();
+                    });
+                    
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    CSVApp.elements.columnList.appendChild(div);
+                });
+                
+                CSVApp.elements.columnSelection.classList.remove('hidden');
+                CSVApp.elements.filterSection.classList.remove('hidden');
+                CSVApp.elements.statsPanel.classList.remove('hidden');
+            },
+
+            getTypeIcon(type) {
+                const icons = {
+                    text: '📝',
+                    number: '🔢',
+                    email: '📧',
+                    date: '📅',
+                    url: '🔗',
+                    phone: '📞'
+                };
+                return icons[type] || '📝';
+            },
+
+            updateCheckboxes() {
+                CSVApp.data.headers.forEach((_, index) => {
+                    const checkbox = document.getElementById(`col-${index}`);
+                    if (checkbox) {
+                        checkbox.checked = CSVApp.data.selectedColumns.has(index);
+                    }
+                });
+            },
+
+            updatePreview() {
+                if (CSVApp.data.csvData.length === 0) return;
+                
+                const selectedIndices = Array.from(CSVApp.data.selectedColumns).sort((a, b) => a - b);
+                const maxRows = parseInt(CSVApp.elements.previewRows.value) || 10;
+                
+                // Créer l'en-tête du tableau
+                const thead = CSVApp.elements.previewTable.querySelector('thead');
+                thead.innerHTML = '';
+                const headerRow = document.createElement('tr');
+                
+                selectedIndices.forEach(index => {
+                    const th = document.createElement('th');
+                    th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+                    const type = CSVApp.data.columnTypes[index] || 'text';
+                    th.innerHTML = `
+                        <div class="flex items-center">
+                            <span>${CSVApp.data.headers[index] || `Colonne ${index + 1}`}</span>
+                            <span class="ml-2 text-xs">${this.getTypeIcon(type)}</span>
+                        </div>
+                    `;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                
+                // Créer le corps du tableau
+                const tbody = CSVApp.elements.previewTable.querySelector('tbody');
+                tbody.innerHTML = '';
+                
+                const dataRows = CSVApp.data.csvData.slice(1, maxRows + 1);
+                
+                dataRows.forEach((row, rowIndex) => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700';
+                    
+                    selectedIndices.forEach(index => {
+                        const td = document.createElement('td');
+                        td.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200';
+                        const value = row[index] || '';
+                        const type = CSVApp.data.columnTypes[index];
+                        
+                        // Détecter les anomalies
+                        const anomalies = Utils.detectAnomalies(value, type, index);
+                        
+                        if (anomalies && anomalies.length > 0) {
+                            // Mettre en évidence les anomalies
+                            td.className += ' bg-red-100 dark:bg-red-900 border-l-4 border-red-500 relative';
+                            td.innerHTML = `
+                                <span class="text-red-700 dark:text-red-300">${Utils.sanitizeText(value)}</span>
+                                <div class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-pulse" title="${anomalies.join(', ')}"></div>
+                            `;
+                            
+                            // Ajouter un tooltip avec les détails des anomalies
+                            td.setAttribute('title', `⚠️ Anomalies détectées: ${anomalies.join(', ')}`);
+                            td.style.cursor = 'help';
+                        } else {
+                            td.textContent = Utils.sanitizeText(value);
+                            
+                            // Ajouter une classe basée sur le type
+                            if (type) {
+                                td.classList.add(`text-${type}`);
+                            }
+                        }
+                        
+                        tr.appendChild(td);
+                    });
+                    
+                    tbody.appendChild(tr);
+                });
+                
+                CSVApp.elements.dataPreview.classList.remove('hidden');
+                CSVApp.elements.actionButtons.classList.remove('hidden');
+            },
+
+            updateStats() {
+                CSVApp.elements.totalRows.textContent = (CSVApp.data.csvData.length - 1).toLocaleString();
+                CSVApp.elements.totalColumns.textContent = CSVApp.data.headers.length.toLocaleString();
+                CSVApp.elements.selectedCount.textContent = CSVApp.data.selectedColumns.size.toLocaleString();
+                if (CSVApp.data.currentFile) {
+                    CSVApp.elements.fileSizeDisplay.textContent = Utils.formatFileSize(CSVApp.data.currentFile.size);
+                }
+                
+                // Analyser et afficher les anomalies
+                this.analyzeAnomalies();
+            },
+
+            analyzeAnomalies() {
+                if (CSVApp.data.csvData.length === 0) return;
+                
+                const anomaliesMap = new Map();
+                let totalAnomalies = 0;
+                
+                // Analyser toutes les données (limité aux 1000 premières lignes pour les performances)
+                const maxRows = Math.min(1000, CSVApp.data.csvData.length);
+                
+                for (let rowIndex = 1; rowIndex < maxRows; rowIndex++) {
+                    const row = CSVApp.data.csvData[rowIndex];
+                    
+                    for (let colIndex = 0; colIndex < row.length; colIndex++) {
+                        const value = row[colIndex];
+                        const type = CSVApp.data.columnTypes[colIndex];
+                        const anomalies = Utils.detectAnomalies(value, type, colIndex);
+                        
+                        if (anomalies && anomalies.length > 0) {
+                            totalAnomalies++;
+                            const columnName = CSVApp.data.headers[colIndex] || `Colonne ${colIndex + 1}`;
+                            
+                            anomalies.forEach(anomaly => {
+                                const key = `${columnName}: ${anomaly}`;
+                                anomaliesMap.set(key, (anomaliesMap.get(key) || 0) + 1);
+                            });
+                        }
+                    }
+                }
+                
+                // Mettre à jour l'affichage
+                CSVApp.elements.anomaliesCount.textContent = totalAnomalies.toLocaleString();
+                
+                if (totalAnomalies > 0) {
+                    CSVApp.elements.anomaliesCount.className = 'text-2xl font-bold text-red-500 animate-pulse';
+                    
+                    // Afficher les détails
+                    const detailsHtml = Array.from(anomaliesMap.entries())
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 10) // Limiter à 10 types d'anomalies
+                        .map(([anomaly, count]) => `<div class="mb-1">• ${anomaly} (${count} occurrence${count > 1 ? 's' : ''})</div>`)
+                        .join('');
+                    
+                    CSVApp.elements.anomaliesList.innerHTML = detailsHtml;
+                    CSVApp.elements.anomaliesDetails.classList.remove('hidden');
+                    
+                    // Ajouter à l'historique
+                    HistoryManager.add('warning', `${totalAnomalies} anomalie${totalAnomalies > 1 ? 's' : ''} détectée${totalAnomalies > 1 ? 's' : ''} dans les données`);
+                } else {
+                    CSVApp.elements.anomaliesCount.className = 'text-2xl font-bold text-green-500';
+                    CSVApp.elements.anomaliesDetails.classList.add('hidden');
+                }
+            },
+
+            selectByType() {
+                const typeFilter = CSVApp.elements.typeFilter.value;
+                if (!typeFilter) {
+                    ErrorHandler.show('Veuillez sélectionner un type de données', 'warning');
+                    return;
+                }
+                
+                CSVApp.data.selectedColumns.clear();
+                
+                Object.keys(CSVApp.data.columnTypes).forEach(index => {
+                    if (CSVApp.data.columnTypes[index] === typeFilter) {
+                        CSVApp.data.selectedColumns.add(parseInt(index));
+                    }
+                });
+                
+                this.updateCheckboxes();
+                this.updatePreview();
+                this.updateStats();
+                
+                HistoryManager.add('action', `Colonnes de type "${typeFilter}" sélectionnées`);
+            },
+
+            reset() {
+                CSVApp.data.csvData = [];
+                CSVApp.data.headers = [];
+                CSVApp.data.columnTypes = {};
+                CSVApp.data.selectedColumns = new Set();
+                CSVApp.data.filteredColumns = new Set();
+                CSVApp.data.originalFileName = '';
+                CSVApp.data.currentFile = null;
+                
+                CSVApp.elements.fileInfo.classList.add('hidden');
+                CSVApp.elements.columnSelection.classList.add('hidden');
+                CSVApp.elements.filterSection.classList.add('hidden');
+                CSVApp.elements.dataPreview.classList.add('hidden');
+                CSVApp.elements.actionButtons.classList.add('hidden');
+                CSVApp.elements.statsPanel.classList.add('hidden');
+                CSVApp.elements.progressContainer.classList.add('hidden');
+                CSVApp.elements.downloadCSVBtn.disabled = true;
+                CSVApp.elements.downloadJSONBtn.disabled = true;
+                CSVApp.elements.downloadExcel.disabled = true;
+                CSVApp.elements.generateReport.disabled = true;
+                CSVApp.elements.fileInput.value = '';
+                CSVApp.elements.columnSearch.value = '';
+                CSVApp.elements.typeFilter.value = '';
+                CSVApp.elements.activeFilters.innerHTML = '';
+                
+                HistoryManager.add('action', 'Application réinitialisée');
+            }
+        };
+
+        // === EXPORTEUR AVANCÉ ===
+        const Exporter = {
+            downloadCSV() {
+                try {
+                    if (CSVApp.data.csvData.length === 0 || CSVApp.data.selectedColumns.size === 0) {
+                        ErrorHandler.show('Aucune donnée ou colonne sélectionnée', 'warning');
+                        return;
+                    }
+                    
+                    const selectedIndices = Array.from(CSVApp.data.selectedColumns).sort((a, b) => a - b);
+                    
+                    const filteredData = CSVApp.data.csvData.map(row => 
+                        selectedIndices.map(index => row[index] || '')
+                    );
+                    
+                    const csv = Papa.unparse(filteredData, {
+                        delimiter: ',',
+                        header: false,
+                        encoding: 'UTF-8'
+                    });
+                    
+                    const BOM = '\uFEFF';
+                     const csvWithBOM = BOM + csv;
+                     
+                     this.downloadFile(csvWithBOM, `${CSVApp.data.originalFileName}_clean.csv`, 'text/csv;charset=utf-8;');
+                     ErrorHandler.show('CSV téléchargé avec succès !', 'success');
+                     HistoryManager.add('success', 'Fichier CSV téléchargé');
+                     
+                 } catch (error) {
+                     ErrorHandler.show('Erreur lors du téléchargement CSV', 'error');
+                     ErrorHandler.log('Erreur téléchargement CSV:', error);
+                 }
+             },
+
+             downloadJSON() {
+                 try {
+                     if (CSVApp.data.csvData.length === 0 || CSVApp.data.selectedColumns.size === 0) {
+                         ErrorHandler.show('Aucune donnée ou colonne sélectionnée', 'warning');
+                         return;
+                     }
+                     
+                     const selectedIndices = Array.from(CSVApp.data.selectedColumns).sort((a, b) => a - b);
+                     const headers = selectedIndices.map(index => CSVApp.data.headers[index]);
+                     
+                     const jsonData = CSVApp.data.csvData.slice(1).map(row => {
+                         const obj = {};
+                         selectedIndices.forEach((colIndex, i) => {
+                             obj[headers[i]] = row[colIndex] || '';
+                         });
+                         return obj;
+                     });
+                     
+                     const jsonString = JSON.stringify(jsonData, null, 2);
+                     this.downloadFile(jsonString, `${CSVApp.data.originalFileName}_clean.json`, 'application/json;charset=utf-8;');
+                     ErrorHandler.show('JSON téléchargé avec succès !', 'success');
+                     HistoryManager.add('success', 'Fichier JSON téléchargé');
+                     
+                 } catch (error) {
+                     ErrorHandler.show('Erreur lors du téléchargement JSON', 'error');
+                     ErrorHandler.log('Erreur téléchargement JSON:', error);
+                 }
+             },
+
+             downloadExcel() {
+                 try {
+                     if (CSVApp.data.csvData.length === 0 || CSVApp.data.selectedColumns.size === 0) {
+                         ErrorHandler.show('Aucune donnée ou colonne sélectionnée', 'warning');
+                         return;
+                     }
+                     
+                     // Simuler un export Excel en CSV avec séparateur point-virgule
+                     const selectedIndices = Array.from(CSVApp.data.selectedColumns).sort((a, b) => a - b);
+                     
+                     const filteredData = CSVApp.data.csvData.map(row => 
+                         selectedIndices.map(index => row[index] || '')
+                     );
+                     
+                     const csv = Papa.unparse(filteredData, {
+                         delimiter: ';',
+                         header: false,
+                         encoding: 'UTF-8'
+                     });
+                     
+                     const BOM = '\uFEFF';
+                     const csvWithBOM = BOM + csv;
+                     
+                     this.downloadFile(csvWithBOM, `${CSVApp.data.originalFileName}_excel.csv`, 'text/csv;charset=utf-8;');
+                     ErrorHandler.show('Fichier Excel (CSV) téléchargé !', 'success');
+                     HistoryManager.add('success', 'Fichier Excel téléchargé');
+                     
+                 } catch (error) {
+                     ErrorHandler.show('Erreur lors du téléchargement Excel', 'error');
+                     ErrorHandler.log('Erreur téléchargement Excel:', error);
+                 }
+             },
+
+             generateReport() {
+                 try {
+                     if (CSVApp.data.csvData.length === 0) {
+                         ErrorHandler.show('Aucune donnée disponible', 'warning');
+                         return;
+                     }
+                     
+                     const report = {
+                         metadata: {
+                             fileName: CSVApp.data.originalFileName,
+                             generatedAt: new Date().toISOString(),
+                             totalRows: CSVApp.data.csvData.length - 1,
+                             totalColumns: CSVApp.data.headers.length,
+                             selectedColumns: CSVApp.data.selectedColumns.size,
+                             delimiter: CSVApp.data.detectedDelimiter
+                         },
+                         columns: CSVApp.data.headers.map((header, index) => ({
+                             index,
+                             name: header,
+                             type: CSVApp.data.columnTypes[index] || 'text',
+                             selected: CSVApp.data.selectedColumns.has(index)
+                         })),
+                         statistics: this.generateStatistics(),
+                         preview: CSVApp.data.csvData.slice(0, 6)
+                     };
+                     
+                     const reportString = JSON.stringify(report, null, 2);
+                     this.downloadFile(reportString, `${CSVApp.data.originalFileName}_report.json`, 'application/json;charset=utf-8;');
+                     ErrorHandler.show('Rapport généré avec succès !', 'success');
+                     HistoryManager.add('success', 'Rapport généré');
+                     
+                 } catch (error) {
+                     ErrorHandler.show('Erreur lors de la génération du rapport', 'error');
+                     ErrorHandler.log('Erreur génération rapport:', error);
+                 }
+             },
+
+             generateStatistics() {
+                 const stats = {};
+                 
+                 Object.keys(CSVApp.data.columnTypes).forEach(index => {
+                     const type = CSVApp.data.columnTypes[index];
+                     stats[type] = (stats[type] || 0) + 1;
+                 });
+                 
+                 return {
+                     columnTypes: stats,
+                     fileSize: CSVApp.data.currentFile ? CSVApp.data.currentFile.size : 0,
+                     processingTime: CSVApp.data.processingStartTime ? 
+                         performance.now() - CSVApp.data.processingStartTime : 0
+                 };
+             },
+
+             downloadFile(content, filename, mimeType) {
+                 const blob = new Blob([content], { type: mimeType });
+                 const link = document.createElement('a');
+                 const url = URL.createObjectURL(blob);
+                 link.setAttribute('href', url);
+                 link.setAttribute('download', filename);
+                 link.style.visibility = 'hidden';
+                 document.body.appendChild(link);
+                 link.click();
+                 document.body.removeChild(link);
+                 URL.revokeObjectURL(url);
+             }
+         };
+
+         // === INITIALISATION AVANCÉE ===
+         function initializeApp() {
+             // Initialiser le mode sombre
+             DarkModeManager.init();
+             
+             // Charger l'historique
+             HistoryManager.load();
+             
+             // Événements de drag & drop
+             CSVApp.elements.dropZone.addEventListener('dragover', (e) => {
+                 e.preventDefault();
+                 CSVApp.elements.dropZone.classList.add('border-blue-400', 'bg-blue-50');
+             });
+
+             CSVApp.elements.dropZone.addEventListener('dragleave', (e) => {
+                 e.preventDefault();
+                 CSVApp.elements.dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+             });
+
+             CSVApp.elements.dropZone.addEventListener('drop', (e) => {
+                 e.preventDefault();
+                 CSVApp.elements.dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+                 const files = e.dataTransfer.files;
+                 if (files.length > 0) {
+                     FileHandler.handleFile(files[0]);
+                 }
+             });
+
+             // Événements de clic
+             CSVApp.elements.dropZone.addEventListener('click', () => {
+                 CSVApp.elements.fileInput.click();
+             });
+
+             CSVApp.elements.fileButton.addEventListener('click', (e) => {
+                 e.stopPropagation();
+                 CSVApp.elements.fileInput.click();
+             });
+
+             CSVApp.elements.fileInput.addEventListener('change', (e) => {
+                 if (e.target.files.length > 0) {
+                     FileHandler.handleFile(e.target.files[0]);
+                 }
+             });
+
+             // Mode sombre
+             CSVApp.elements.darkModeToggle.addEventListener('click', () => {
+                 DarkModeManager.toggle();
+             });
+
+             // Historique
+             CSVApp.elements.historyToggle.addEventListener('click', () => {
+                 CSVApp.elements.historyPanel.classList.toggle('open');
+             });
+
+             CSVApp.elements.clearHistory.addEventListener('click', () => {
+                 HistoryManager.clear();
+             });
+
+             // Filtres
+             const debouncedFilter = Utils.debounce(() => FilterManager.applyFilters(), 300);
+             CSVApp.elements.columnSearch.addEventListener('input', debouncedFilter);
+             CSVApp.elements.typeFilter.addEventListener('change', () => FilterManager.applyFilters());
+             CSVApp.elements.clearFilters.addEventListener('click', () => FilterManager.clear());
+
+             // Boutons de sélection
+             CSVApp.elements.selectAllBtn.addEventListener('click', () => {
+                 CSVApp.data.selectedColumns = new Set(CSVApp.data.headers.map((_, index) => index));
+                 UI.updateCheckboxes();
+                 UI.updatePreview();
+                 UI.updateStats();
+                 HistoryManager.add('action', 'Toutes les colonnes sélectionnées');
+             });
+
+             CSVApp.elements.deselectAllBtn.addEventListener('click', () => {
+                 CSVApp.data.selectedColumns.clear();
+                 UI.updateCheckboxes();
+                 UI.updatePreview();
+                 UI.updateStats();
+                 HistoryManager.add('action', 'Toutes les colonnes désélectionnées');
+             });
+
+             CSVApp.elements.selectByType.addEventListener('click', () => {
+                 UI.selectByType();
+             });
+
+             // Sauvegarde des préférences
+             CSVApp.elements.savePrefsBtn.addEventListener('click', () => {
+                 PreferencesManager.save();
+             });
+
+             // Aperçu
+             CSVApp.elements.previewRows.addEventListener('change', (e) => {
+                 CSVApp.ui.currentPreviewRows = parseInt(e.target.value);
+                 UI.updatePreview();
+             });
+
+             CSVApp.elements.refreshPreview.addEventListener('click', () => {
+                 UI.updatePreview();
+                 ErrorHandler.show('Aperçu actualisé', 'info', 2000);
+             });
+
+             // Boutons de téléchargement
+             CSVApp.elements.downloadCSVBtn.addEventListener('click', () => {
+                 Exporter.downloadCSV();
+             });
+
+             CSVApp.elements.downloadJSONBtn.addEventListener('click', () => {
+                 Exporter.downloadJSON();
+             });
+
+             CSVApp.elements.downloadExcel.addEventListener('click', () => {
+                 Exporter.downloadExcel();
+             });
+
+             CSVApp.elements.generateReport.addEventListener('click', () => {
+                 Exporter.generateReport();
+             });
+
+             // Reset
+             CSVApp.elements.resetBtn.addEventListener('click', () => {
+                 if (confirm('Êtes-vous sûr de vouloir réinitialiser l\'application ?')) {
+                     UI.reset();
+                     ErrorHandler.show('Application réinitialisée', 'success');
+                 }
+             });
+
+             // Raccourcis clavier avancés
+             document.addEventListener('keydown', (e) => {
+                 // Ctrl+S : Télécharger CSV
+                 if (e.ctrlKey && e.key === 's') {
+                     e.preventDefault();
+                     if (!CSVApp.elements.downloadCSVBtn.disabled) {
+                         Exporter.downloadCSV();
+                     }
+                 }
+                 // Ctrl+J : Télécharger JSON
+                 if (e.ctrlKey && e.key === 'j') {
+                     e.preventDefault();
+                     if (!CSVApp.elements.downloadJSONBtn.disabled) {
+                         Exporter.downloadJSON();
+                     }
+                 }
+                 // Ctrl+R : Reset
+                 if (e.ctrlKey && e.key === 'r') {
+                     e.preventDefault();
+                     UI.reset();
+                 }
+                 // Ctrl+D : Mode sombre
+                 if (e.ctrlKey && e.key === 'd') {
+                     e.preventDefault();
+                     DarkModeManager.toggle();
+                 }
+                 // Ctrl+H : Historique
+                 if (e.ctrlKey && e.key === 'h') {
+                     e.preventDefault();
+                     CSVApp.elements.historyPanel.classList.toggle('open');
+                 }
+                 // Escape : Fermer les panneaux
+                 if (e.key === 'Escape') {
+                     CSVApp.elements.historyPanel.classList.remove('open');
+                 }
+             });
+
+             // Fermer l'historique en cliquant à l'extérieur
+             document.addEventListener('click', (e) => {
+                 if (!CSVApp.elements.historyPanel.contains(e.target) && 
+                     !CSVApp.elements.historyToggle.contains(e.target)) {
+                     CSVApp.elements.historyPanel.classList.remove('open');
+                 }
+             });
+
+             // Charger les préférences sauvegardées
+             const savedPrefs = PreferencesManager.load();
+             if (savedPrefs.timestamp) {
+                 ErrorHandler.show('Préférences précédentes chargées', 'info', 3000);
+             }
+
+             // Message de bienvenue
+             HistoryManager.add('info', 'Application CSV Sélecteur - Version Avancée initialisée');
+             ErrorHandler.show('Bienvenue dans le Sélecteur CSV Avancé ! 🚀', 'success', 4000);
+         }
+
+         // Fonction pour basculer l'affichage des détails des anomalies
+         function toggleAnomaliesDetails() {
+             const details = CSVApp.elements.anomaliesDetails;
+             if (details) {
+                 details.classList.toggle('hidden');
+                 
+                 // Animation d'ouverture/fermeture
+                 if (!details.classList.contains('hidden')) {
+                     details.style.maxHeight = '0px';
+                     details.style.overflow = 'hidden';
+                     details.style.transition = 'max-height 0.3s ease-out';
+                     
+                     setTimeout(() => {
+                         details.style.maxHeight = details.scrollHeight + 'px';
+                     }, 10);
+                     
+                     setTimeout(() => {
+                         details.style.maxHeight = 'none';
+                         details.style.overflow = 'visible';
+                     }, 300);
+                 }
+             }
+         }
+
+         // Démarrage de l'application
+         document.addEventListener('DOMContentLoaded', initializeApp);
+     </script>
+ </body>
+ </html>
